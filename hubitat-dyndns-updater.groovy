@@ -13,7 +13,8 @@ definition(
     singleInstance: true,
     iconUrl: "",
     iconX2Url: "",
-    iconX3Url: ""
+    iconX3Url: "",
+    importUrl: "https://raw.githubusercontent.com/bkhall/Hubitat-DynDns-Updater/main/hubitat-dyndns-updater.groovy"
 )
 
 preferences {
