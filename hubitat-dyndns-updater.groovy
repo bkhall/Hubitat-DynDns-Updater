@@ -40,8 +40,14 @@ def page1() {
     }
     if (null == state.lastUpdate) {
         state.lastUpdate = 0
+    }    
+    if (null == settings.frequency) {
+        settings.frequency = "6 Hours"
     }
-    
+    if (null == settings.domains) {
+        settings.domains = ""
+    }
+        
     return dynamicPage(name: "page1", refreshInterval: 0, install: false, uninstall: state.installed, nextPage: "page2") {
         section("<b>Current IPv4 Addresss</b>") {
             if (null == currentIp) {
