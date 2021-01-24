@@ -41,13 +41,7 @@ def page1() {
     if (null == state.lastUpdate) {
         state.lastUpdate = 0
     }    
-    if (null == settings.frequency) {
-        settings.frequency = "6 Hours"
-    }
-    if (null == settings.domains) {
-        settings.domains = ""
-    }
-        
+
     return dynamicPage(name: "page1", refreshInterval: 0, install: false, uninstall: state.installed, nextPage: "page2") {
         section("<b>Current IPv4 Addresss</b>") {
             if (null == currentIp) {
@@ -171,20 +165,28 @@ private checkIp() {
                     doUpdate()
                 }
             } else {
-                log.debug "Check IP Failed"
+                log.info "Check IP Failed"
             }
         }
     } catch (e) {
         log.error "Check IP Error: ${e} ${request}"
     }
     
-    runIn (getNormalizedFrequency(), 'checkIp', null)
-    
     state.lastCheck = rightNow
+    
+    if (null == settings.frequency) {
+        return
+    }
+
+    runIn (getNormalizedFrequency(), 'checkIp')
 }
 
 private doUpdate() {
-     long rightNow = now()
+    if (null == settings.domains) {
+        return 
+    }
+    
+    long rightNow = now()
     
     // don't update for at least 10 minutes
     if (rightNow < state.lastUpdate + 10 * 60 * 1000) {
@@ -252,16 +254,12 @@ private updateDynDns(String[] domains) {
         query: query 
     ]
     
-    log.debug headers
-    log.debug query
-    log.debug params
-    
     try {
         httpGet(params) {response ->
             if (response.success) {
                 log.info "DynDns updated ${domains}"
             } else {
-                log.error "Failed to update ${domains}"
+                log.info "Failed to update ${domains}"
             }
         }
     } catch (e) {
