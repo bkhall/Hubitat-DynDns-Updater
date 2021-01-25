@@ -273,5 +273,5 @@ private updateDynDns(String[] domains) {
     }
     
     // retry in 15 minutes
-    runIn(900, "doUpdate", [overwrite: true])
+    runIn(900, "doUpdate", [overwrite: false])
 }
