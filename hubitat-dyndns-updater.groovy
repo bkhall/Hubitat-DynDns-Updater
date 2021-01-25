@@ -226,7 +226,7 @@ private doUpdate() {
     String[] domains = settings.domains.split(",")
     
     for (int i = 0; i < domains.size(); i += 20) {
-        String[] group = new String[Math.min(20, domains.size() - i * 20)]
+        String[] group = new String[Math.min(20, domains.size() - i)]
         
         for (int j = 0; j < group.size(); j++) {
             group[0] = domains[j + i * 20]
