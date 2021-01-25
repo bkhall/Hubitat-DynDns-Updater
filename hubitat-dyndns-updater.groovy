@@ -111,7 +111,7 @@ private buildPageContent(boolean showConfig) {
 
             input name: "domains", type: "text", title: "Domains (up to 20, comma-separated domain names to update)", required: true
             input name: "interval", type: "enum", title: "Minimum update frequency", multiple: false, defaultValue: "6 Hours",
-                options: ["1 Hour","3 Hours", "6 Hours", "12 Hours", "24 Hours", "48 Hours", "1 Week", "2 Weeks", "1 Month"], required: true
+                options: ["15 Minutes", "30 Minutes", "1 Hour","2 Hours", "4 Hours", "8 Hours", "12 Hours", "24 Hours", "48 Hours", "4 Days", "1 Week", "2 Weeks", "1 Month"], required: true
         }
     }
 }
@@ -170,8 +170,6 @@ private checkIp() {
                 }
                     
                 scheduleRegularIPChecks()
-                    
-                return
             } else {
                 log.info "Check IP Failed"
 
@@ -195,18 +193,26 @@ private scheduleRegularIPChecks() {
 
 private int getInterval() {
     switch (settings.interval) {
+        case "15 Minutes":
+            return 900
+        case "30 Minutes":
+            return 1800
         case "1 Hour":
             return 3600
-        case "3 Hours":
-            return 3 * 3600
-        case "6 Hours":
-            return 6 * 3600
+        case "2 Hours":
+            return 2 * 3600
+        case "4 Hours":
+            return 4 * 3600
+        case "8 Hours":
+            return 8 * 3600
         case "12 Hours":
             return 12 * 3600
         case "24 Hours":
             return 24 * 3600
         case "48 Hours":
             return 48 * 3600
+        case "4 Days":
+            return 4 * 24 * 3600
         case "1 Week":
             return  7 * 24 * 3600
         case "2 Weeks":
@@ -273,8 +279,6 @@ private updateDynDns(String[] domains) {
 
                 state.currentIp = state.pendingIp
                 state.lastUpdate = rightNow
-
-                return
             } else {
                 log.info "Failed to update ${domains}"
             }
