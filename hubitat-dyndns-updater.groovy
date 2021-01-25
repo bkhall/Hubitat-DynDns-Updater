@@ -158,12 +158,12 @@ private checkIp() {
                 } else {
                     log.info "Check IP found a change."
 
-                    doUpdate()
-					
-					scheduleRegularIPChecks()
-                    
-                    return
+                    doUpdate()				
                 }
+
+         		scheduleRegularIPChecks()
+                    
+                return
             } else {
                 log.info "Check IP Failed"
             }
