@@ -135,7 +135,9 @@ private checkIp() {
     if (rightNow < state.lastCheck + 10 * 60 * 1000) {
         log.info "Too soon, skipping Check IP"
 
-        return
+        scheduleRegularIPChecks()
+        
+		return
     }
     
     log.info "Checking for IP changes"
