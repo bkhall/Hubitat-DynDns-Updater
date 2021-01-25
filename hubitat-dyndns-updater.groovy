@@ -1,8 +1,4 @@
-import groovy.transform.Field
 import groovy.xml.XmlUtil;
-
-@Field
-String currentIp
 
 definition(
     name: "DynDns Updater",
@@ -25,31 +21,27 @@ preferences {
 
 def installed() {
     updated()
+    
+    state.installed = true
 }
 
 def updated() {
     unsubscribe()
     unschedule()
-    
-    doUpdate()
+
+    scheduleRegularIPChecks()
 }
 
 def page1() {
     if (null == state.lastCheck) {
         state.lastCheck = 0
-    }
+    }    
     if (null == state.lastUpdate) {
         state.lastUpdate = 0
     }    
 
     return dynamicPage(name: "page1", refreshInterval: 0, install: false, uninstall: state.installed, nextPage: "page2") {
-        section("<b>Current IPv4 Addresss</b>") {
-            if (null == currentIp) {
-                checkIp()
-            }
-                                     
-            paragraph state.currentIp
-        }
+        buildCurrentIpSection()
     
         if (state.installed) {
             describeInstall()
@@ -71,8 +63,6 @@ def page2() {
 }
 
 def page3() {
-    state.installed = true
-    
     settings.domains = settings.domains.replace(" ", "")
 
     if ("Free".equals(settings.accountType)) {
@@ -86,16 +76,18 @@ def page3() {
     }
 }
 
-private buildPageContent(boolean showConfig) {
+private buildCurrentIpSection() {
     section("<b>Current IPv4 Addresss</b>") {
-        if (null == currentIp) {
-            checkIp()
-        }
+        checkIp()
                                      
-        paragraph state.currentIp
+        paragraph state.pendingIp
     }
+}    
+
+private buildPageContent(boolean showConfig) {
+    buildCurrentIpSection()
     
-    if (state.installed && showConfig) {
+    if (showConfig) {
         describeInstall()
     } else {
         section("<b>Configure Updater</b>") {
@@ -110,7 +102,7 @@ private buildPageContent(boolean showConfig) {
             }
 
             input name: "domains", type: "text", title: "Domains (up to 20, comma-separated domain names to update)", required: true
-            input name: "frequency", type: "enum", title: "Minimum update frequency", multiple: false, defaultValue: "6 Hours",
+            input name: "interval", type: "enum", title: "Minimum update frequency", multiple: false, defaultValue: "6 Hours",
                 options: ["1 Hour","3 Hours", "6 Hours", "12 Hours", "24 Hours", "48 Hours", "1 Week", "2 Weeks", "1 Month"], required: true
         }
     }
@@ -119,7 +111,7 @@ private buildPageContent(boolean showConfig) {
 private describeInstall() {
     section("<b>Current Configuration</b>") {
         paragraph "Account Type: ${settings.accountType}"
-        paragraph "Update Frequency: ${settings.frequency}"
+        paragraph "Update Frequency: ${settings.interval}"
 
         def domains = settings.domains.split(",")
 
@@ -137,16 +129,12 @@ private describeInstall() {
 }
 
 private checkIp() {
-    if (null != settings.frequency) {
-        runIn (getNormalizedFrequency(), "checkIp", [overwrite: true])
-    }
-
     long rightNow = now()
     
     // don't re-check for at least 10 minutes
     if (rightNow < state.lastCheck + 10 * 60 * 1000) {
         log.info "Too soon, skipping Check IP"
-        
+
         return
     }
     
@@ -161,16 +149,18 @@ private checkIp() {
                 
                 index = html.indexOf("<")
                 
-                currentIp = html.substring(0, index).trim()
+                state.pendingIp = html.substring(0, index).trim()
+
+                state.lastCheck = rightNow
                 
-                if (currentIp.equals(state.currentIp)) {
+                if (state.pendingIp.equals(state.currentIp)) {
                     log.info "Check IP found no change."
                 } else {
                     log.info "Check IP found a change."
 
-                    state.currentIp = currentIp
-                    
                     doUpdate()
+                    
+                    return
                 }
             } else {
                 log.info "Check IP Failed"
@@ -179,43 +169,21 @@ private checkIp() {
     } catch (e) {
         log.error "Check IP Error: ${e} ${request}"
     }
-    
-    state.lastCheck = rightNow
+
+    // retry in 15 minutes
+    runIn(900, "checkIp", [overwrite: true])
 }
 
-private doUpdate() {
-    if (null == settings.domains) {
-        return 
-    }
-    
-    long rightNow = now()
-    
-    // don't update for at least 10 minutes
-    if (rightNow < state.lastUpdate + 10 * 60 * 1000) {
-        log.info "Too soon, skipping update"
-
+private scheduleRegularIPChecks() {
+    if (null == settings.interval) {
         return
     }
-    
-    // dyndns only allows 20 domains to be updated in one call
-    // break the stored domains into groups of 20
-    String[] domains = settings.domains.split(",")
-    
-    for (int i = 0; i < domains.size(); i += 20) {
-        String[] group = new String[Math.min(20, domains.size() - i * 20)]
-        
-        for (int j = 0; j < group.size(); j++) {
-            group[0] = domains[j + i * 20]
-        }
-        
-        updateDynDns(group)
-    }
-    
-    state.lastUpdate = rightNow
+
+    runIn (getInterval(), "checkIp", [overwrite: true])                
 }
 
-private int getNormalizedFrequency() {
-    switch (settings.frequency) {
+private int getInterval() {
+    switch (settings.interval) {
         case "1 Hour":
             return 3600
         case "3 Hours":
@@ -237,6 +205,35 @@ private int getNormalizedFrequency() {
     }
 }
 
+private doUpdate() {
+    if (null == settings.domains) {
+        return 
+    }
+    
+    long rightNow = now()
+    
+    // don't re-update for at least 10 minutes
+    if (rightNow < state.lastUpdate + 10 * 60 * 1000) {
+        log.info "Too soon, skipping update"
+
+        return
+    }
+    
+    // dyndns only allows 20 domains to be updated in one call
+    // break the stored domains into groups of 20
+    String[] domains = settings.domains.split(",")
+    
+    for (int i = 0; i < domains.size(); i += 20) {
+        String[] group = new String[Math.min(20, domains.size() - i * 20)]
+        
+        for (int j = 0; j < group.size(); j++) {
+            group[0] = domains[j + i * 20]
+        }
+        
+        updateDynDns(group)
+    }
+}
+
 private updateDynDns(String[] domains) {
     log.info "Updating DynDns"
     
@@ -247,7 +244,7 @@ private updateDynDns(String[] domains) {
     
     Map query = [
         hostname: URLEncoder.encode(domains.join(","), "UTF-8"),
-        myip: URLEncoder.encode(state.currentIp, "UTF-8")
+        myip: URLEncoder.encode(state.pendingIp, "UTF-8")
     ]
     
     Map params = [
@@ -259,7 +256,12 @@ private updateDynDns(String[] domains) {
     try {
         httpGet(params) {response ->
             if (response.success) {
-                log.info "DynDns updated ${domains} with ${state.currentIp}"
+                log.info "DynDns updated ${domains} with ${state.pendingIp}"
+
+                state.currentIp = state.pendingIp
+                state.lastUpdate = rightNow
+
+                return
             } else {
                 log.info "Failed to update ${domains}"
             }
@@ -267,4 +269,7 @@ private updateDynDns(String[] domains) {
     } catch (e) {
         log.error "error: $e $request"
     }
+    
+    // retry in 15 minutes
+    runIn(900, "doUpdate", [overwrite: true])
 }
