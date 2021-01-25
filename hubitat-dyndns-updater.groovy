@@ -63,7 +63,15 @@ def page2() {
 }
 
 def page3() {
-    settings.domains = settings.domains.replace(" ", "")
+    settings.domains = settings.domains.replace("\\s+;|:", "")
+    
+    while (string.domains.contains(",,")) {
+       settings.domains = settings.domains.replace("[,,]+", ",") 
+    }
+
+    while (string.domains.contains("..")) {
+       settings.domains = settings.domains.replace("[..]+", ".") 
+    }
 
     if ("Free".equals(settings.accountType)) {
         state.auth = "${settings.username}:${settings.password}".bytes.encodeBase64().toString()
@@ -166,21 +174,22 @@ private checkIp() {
                 return
             } else {
                 log.info "Check IP Failed"
+
+                retryIpCheckIn15Minutes()
             }
         }
     } catch (e) {
         log.error "Check IP Error: ${e} ${request}"
-    }
 
-    // retry in 15 minutes
-    runIn(900, "checkIp", [overwrite: false])
+        retryIpCheckIn15Minutes()
+    }
+}
+
+private retryIpCheckIn15Minutes() {
+    runIn (900, "checkIp", [overwrite: true])                
 }
 
 private scheduleRegularIPChecks() {
-    if (null == settings.interval) {
-        return
-    }
-
     runIn (getInterval(), "checkIp", [overwrite: true])                
 }
 
@@ -204,6 +213,8 @@ private int getInterval() {
             return  14 * 24 * 3600
         case "1 Month":
             return 30 * 24 * 3600
+        default:
+            return 6 * 3600
     }
 }
 
@@ -229,7 +240,7 @@ private doUpdate() {
         String[] group = new String[Math.min(20, domains.size() - i)]
         
         for (int j = 0; j < group.size(); j++) {
-            group[0] = domains[j + i * 20]
+            group[j] = domains[j + i * 20]
         }
         
         updateDynDns(group)
@@ -270,8 +281,8 @@ private updateDynDns(String[] domains) {
         }
     } catch (e) {
         log.error "error: $e $request"
+        
+        // retry in 15 minutes
+        runIn(900, "doUpdate", [overwrite: false])
     }
-    
-    // retry in 15 minutes
-    runIn(900, "doUpdate", [overwrite: false])
 }
