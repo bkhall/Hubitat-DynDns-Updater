@@ -137,6 +137,10 @@ private describeInstall() {
 }
 
 private checkIp() {
+    if (null != settings.frequency) {
+        runIn (getNormalizedFrequency(), "checkIp", [overwrite: true])
+    }
+
     long rightNow = now()
     
     // don't re-check for at least 10 minutes
@@ -159,7 +163,11 @@ private checkIp() {
                 
                 currentIp = html.substring(0, index).trim()
                 
-                if (!currentIp.equals(state.currentIp)) {
+                if (currentIp.equals(state.currentIp)) {
+                    log.info "Check IP found no change."
+                } else {
+                    log.info "Check IP found a change."
+
                     state.currentIp = currentIp
                     
                     doUpdate()
@@ -173,12 +181,6 @@ private checkIp() {
     }
     
     state.lastCheck = rightNow
-    
-    if (null == settings.frequency) {
-        return
-    }
-
-    runIn (getNormalizedFrequency(), 'checkIp')
 }
 
 private doUpdate() {
@@ -190,7 +192,7 @@ private doUpdate() {
     
     // don't update for at least 10 minutes
     if (rightNow < state.lastUpdate + 10 * 60 * 1000) {
-        log.info "Too soon, skipping Update"
+        log.info "Too soon, skipping update"
 
         return
     }
@@ -257,7 +259,7 @@ private updateDynDns(String[] domains) {
     try {
         httpGet(params) {response ->
             if (response.success) {
-                log.info "DynDns updated ${domains}"
+                log.info "DynDns updated ${domains} with ${state.currentIp}"
             } else {
                 log.info "Failed to update ${domains}"
             }
