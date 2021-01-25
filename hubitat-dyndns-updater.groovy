@@ -159,6 +159,8 @@ private checkIp() {
                     log.info "Check IP found a change."
 
                     doUpdate()
+					
+					scheduleRegularIPChecks()
                     
                     return
                 }
