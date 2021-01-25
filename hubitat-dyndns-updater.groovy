@@ -134,10 +134,8 @@ private checkIp() {
     // don't re-check for at least 10 minutes
     if (rightNow < state.lastCheck + 10 * 60 * 1000) {
         log.info "Too soon, skipping Check IP"
-
-        scheduleRegularIPChecks()
         
-		return
+        return
     }
     
     log.info "Checking for IP changes"
@@ -160,10 +158,10 @@ private checkIp() {
                 } else {
                     log.info "Check IP found a change."
 
-                    doUpdate()				
+                    doUpdate()
                 }
-
-         		scheduleRegularIPChecks()
+                    
+                scheduleRegularIPChecks()
                     
                 return
             } else {
@@ -175,7 +173,7 @@ private checkIp() {
     }
 
     // retry in 15 minutes
-    runIn(900, "checkIp", [overwrite: true])
+    runIn(900, "checkIp", [overwrite: false])
 }
 
 private scheduleRegularIPChecks() {
