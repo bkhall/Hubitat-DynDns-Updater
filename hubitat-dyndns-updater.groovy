@@ -131,7 +131,7 @@ private describeInstall() {
 private checkIp() {
     long rightNow = now()
     
-    // don't re-check for at least 10 minutes
+    // don't re-check for at least 10 minutes, per DynDns guidelines
     if (rightNow < state.lastCheck + 10 * 60 * 1000) {
         log.info "Too soon, skipping Check IP"
         
