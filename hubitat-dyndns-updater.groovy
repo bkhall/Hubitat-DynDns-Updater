@@ -91,7 +91,7 @@ private buildPageContent(boolean showConfig) {
         describeInstall()
     } else {
         section("<b>Configure Updater</b>") {
-            paragraph "Provide your DynDns Pro account details below"
+            paragraph "Provide your DynDns account details below"
             
             input name: "username", type: "text", title: "DynDns Username", required: true
 
@@ -144,6 +144,7 @@ private checkIp() {
         // clear any scheduled ip check task
         unschedule("checkIp")
                    
+        // yes, use a blocking call here so we can use the response on the status page
         httpGet("http://checkip.dyndns.com/") {response ->
             if (response.success) {
                 String html = XmlUtil.serialize(response.data)
