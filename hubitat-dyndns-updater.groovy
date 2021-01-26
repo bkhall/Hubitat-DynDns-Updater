@@ -30,17 +30,19 @@ def updated() {
     unschedule()
 
     scheduleRegularIPChecks()
+    checkIp()
+    doUpdate()
 }
 
 def page1() {
-    if (null == state.lastCheck) {
-        state.lastCheck = 0
+    if (null == atomicState.lastCheck) {
+        atomicState.lastCheck = 0
     }    
-    if (null == state.lastUpdate) {
-        state.lastUpdate = 0
+    if (null == atomicState.lastUpdate) {
+        atomicState.lastUpdate = 0
     }    
 
-    return dynamicPage(name: "page1", refreshInterval: 0, install: false, uninstall: state.installed, nextPage: "page2") {
+    return dynamicPage(name: "page1", refreshInterval: 0, install: false, uninstall: true, nextPage: "page2") {
         buildCurrentIpSection()
     
         if (state.installed) {
@@ -57,29 +59,19 @@ def page1() {
 }
 
 def page2() {
-    return dynamicPage(name: "page2", refreshInterval: 0, install: false, uninstall: state.installed, nextPage: "page3") {
+    return dynamicPage(name: "page2", refreshInterval: 0, install: false, uninstall: true, nextPage: "page3") {
         buildPageContent(false)
     }
 }
 
 def page3() {
-    settings.domains = settings.domains.replace("\\s+;|:", "")
-    
-    while (string.domains.contains(",,")) {
-       settings.domains = settings.domains.replace("[,,]+", ",") 
-    }
-
-    while (string.domains.contains("..")) {
-       settings.domains = settings.domains.replace("[..]+", ".") 
-    }
-
     if ("Free".equals(settings.accountType)) {
         state.auth = "${settings.username}:${settings.password}".bytes.encodeBase64().toString()
     } else {
         state.auth = "${settings.username}:${settings.updaterKey}".bytes.encodeBase64().toString()
     }
     
-    return dynamicPage(name: "page3", refreshInterval: 0, install: true, uninstall: state.installed) {
+    return dynamicPage(name: "page3", refreshInterval: 0, install: true, uninstall: true) {
         buildPageContent(true)
     }
 }
@@ -88,7 +80,7 @@ private buildCurrentIpSection() {
     section("<b>Current IPv4 Addresss</b>") {
         checkIp()
                                      
-        paragraph state.pendingIp
+        paragraph atomicState.pendingIp
     }
 }    
 
@@ -110,8 +102,9 @@ private buildPageContent(boolean showConfig) {
             }
 
             input name: "domains", type: "text", title: "Domains (up to 20, comma-separated domain names to update)", required: true
-            input name: "interval", type: "enum", title: "Minimum update frequency", multiple: false, defaultValue: "6 Hours",
-                options: ["15 Minutes", "30 Minutes", "1 Hour","2 Hours", "4 Hours", "8 Hours", "12 Hours", "24 Hours", "48 Hours", "4 Days", "1 Week", "2 Weeks", "1 Month"], required: true
+            input name: "interval", type: "enum", title: "Minimum update frequency", multiple: false, defaultValue: "1 Hour",
+                options: ["15 Minutes", "30 Minutes", "1 Hour", "2 Hours", "4 Hours", "8 Hours", "12 Hours", "24 Hours", "48 Hours", "4 Days", "1 Week", "2 Weeks", "1 Month"],
+                required: true
         }
     }
 }
@@ -140,7 +133,7 @@ private checkIp() {
     long rightNow = now()
     
     // don't re-check for at least 10 minutes, per DynDns guidelines
-    if (rightNow < state.lastCheck + 10 * 60 * 1000) {
+    if (rightNow < atomicState.lastCheck + 10 * 60 * 1000) {
         log.info "Too soon, skipping Check IP"
         
         return
@@ -148,6 +141,9 @@ private checkIp() {
     
     log.info "Checking for IP changes"
     try {
+        // clear any scheduled ip check task
+        unschedule("checkIp")
+                   
         httpGet("http://checkip.dyndns.com/") {response ->
             if (response.success) {
                 String html = XmlUtil.serialize(response.data)
@@ -157,11 +153,11 @@ private checkIp() {
                 
                 index = html.indexOf("<")
                 
-                state.pendingIp = html.substring(0, index).trim()
+                atomicState.pendingIp = html.substring(0, index).trim()
 
-                state.lastCheck = rightNow
+                atomicState.lastCheck = rightNow
                 
-                if (state.pendingIp.equals(state.currentIp)) {
+                if (atomicState.pendingIp.equals(atomicState.currentIp)) {
                     log.info "Check IP found no change."
                 } else {
                     log.info "Check IP found a change."
@@ -220,7 +216,7 @@ private int getInterval() {
         case "1 Month":
             return 30 * 24 * 3600
         default:
-            return 6 * 3600
+            return 3600
     }
 }
 
@@ -229,24 +225,32 @@ private doUpdate() {
         return 
     }
     
-    long rightNow = now()
-    
     // don't re-update for at least 10 minutes
-    if (rightNow < state.lastUpdate + 10 * 60 * 1000) {
+    if (now() < atomicState.lastUpdate + 10 * 60 * 1000) {
         log.info "Too soon, skipping update"
 
         return
     }
     
+    // make a weak attempt to remove the most common input errors
+    String domainsStr = settings.domains.trim().replaceAll("\\s+",",")
+    
+    while (domainsStr.contains(",,")) {
+       domainsStr = domainsStr.replace(",,", ",") 
+    }
+
+    while (domainsStr.contains("..")) {
+       domainsStr = domainsStr.replace("..", ".") 
+    }
+    
     // dyndns only allows 20 domains to be updated in one call
     // break the stored domains into groups of 20
-    String[] domains = settings.domains.split(",")
-    
+    String[] domains = domainsStr.split(",")
     for (int i = 0; i < domains.size(); i += 20) {
         String[] group = new String[Math.min(20, domains.size() - i)]
         
         for (int j = 0; j < group.size(); j++) {
-            group[j] = domains[j + i * 20]
+            group[j] = domains[j + i]
         }
         
         updateDynDns(group)
@@ -263,9 +267,19 @@ private updateDynDns(String[] domains) {
     
     Map query = [
         hostname: URLEncoder.encode(domains.join(","), "UTF-8"),
-        myip: URLEncoder.encode(state.pendingIp, "UTF-8")
+        myip: URLEncoder.encode(atomicState.pendingIp, "UTF-8")
     ]
     
+    // we have to make the update call over HTTP right now.
+    // Java-based clients (Groovy) suffer a fatal error due to
+    // a server misconfiguration at DynDns, which makes an HTTPS
+    // call fail
+    //
+    // a Google search on
+    // javax.net.ssl.SSLProtocolException: handshake alert: unrecognized_name
+    // will provide the details
+    //
+    // for now, we're stuck on HTTP
     Map params = [
         uri: "http://members.dyndns.org/v3/update",
         headers: headers,
@@ -273,20 +287,32 @@ private updateDynDns(String[] domains) {
     ]
     
     try {
-        httpGet(params) {response ->
-            if (response.success) {
-                log.info "DynDns updated ${domains} with ${state.pendingIp}"
+        // clear any scheduled update task
+        unschedule("doUpdate")
+        
+        Map data = [
+            domains: domains,
+            pendingIp: atomicState.pendingIp,
+        ]
 
-                state.currentIp = state.pendingIp
-                state.lastUpdate = rightNow
-            } else {
-                log.info "Failed to update ${domains}"
-            }
-        }
+        asynchttpGet("handleUpdateResponse", params, data)       
     } catch (e) {
-        log.error "error: $e $request"
+        log.error "error: ${e} ${params}"
         
         // retry in 15 minutes
-        runIn(900, "doUpdate", [overwrite: false])
+        runIn(900, "doUpdate", [overwrite: true])
     }
+}
+
+def handleUpdateResponse(response, data) {
+    if (response.status == 200) {
+        log.info "DynDns updated ${data.domains} with ${data.pendingIp}"
+
+        atomicState.currentIp = data.pendingIp
+        atomicState.lastUpdate = now()
+    } else {
+        log.info "Failed to update ${data.domains} with ${data.pendingIp}"
+                
+        // something is wrong with the parameters, don't reschedule
+    }        
 }
