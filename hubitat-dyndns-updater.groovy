@@ -313,7 +313,5 @@ def handleUpdateResponse(response, data) {
         atomicState.lastUpdate = now()
     } else {
         log.info "Failed to update ${data.domains} with ${data.pendingIp}"
-                
-        // something is wrong with the parameters, don't reschedule
     }        
 }
